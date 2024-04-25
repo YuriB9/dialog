@@ -68,6 +68,7 @@ while True:
         if code == d.OK:
             if action == "Запустить":
                 # Запускаем bash-скрипт с введенными параметрами
+                os.system('clear')  # Очистка экрана
                 subprocess.run(["bash", "script.sh", domain_name, admin_password, ip_address, hostname])
                 break
             elif action == "Конфигурация":
