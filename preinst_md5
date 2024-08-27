@@ -1,0 +1,49 @@
+#!/bin/bash
+set -e
+
+# Функция для проверки MD5
+check_md5() {
+    local file=$1
+    local expected_md5=$2
+    local actual_md5=$(md5sum "$file" | cut -d" " -f1)
+    if [ "$actual_md5" != "$expected_md5" ]; then
+        echo "MD5 проверка не прошла для файла $file"
+        echo "Ожидаемый MD5: $expected_md5"
+        echo "Фактический MD5: $actual_md5"
+        return 1
+    fi
+    return 0
+}
+
+# Проверяем существование файла md5sums
+MD5SUMS_FILE="/var/lib/dpkg/info/${DPKG_MAINTSCRIPT_PACKAGE}.md5sums"
+if [ ! -f "$MD5SUMS_FILE" ]; then
+    echo "Файл md5sums не найден. Пропускаем проверку MD5."
+    exit 0
+fi
+
+echo "Содержимое файла md5sums:"
+cat "$MD5SUMS_FILE"
+
+# Чтение MD5 сумм
+while IFS= read -r line; do
+    # Используем read для корректного разделения строки
+    read -r md5 file <<< "$line"
+    full_path="/usr/local/bin/$file"
+    echo "Проверяем файл: $full_path"
+    if [ -f "$full_path" ]; then
+        if ! check_md5 "$full_path" "$md5"; then
+            echo "Ошибка проверки MD5. Установка прервана."
+            exit 1
+        else
+            echo "MD5 проверка прошла успешно для $full_path"
+        fi
+    else
+        echo "Файл $full_path не найден. Пропускаем его проверку."
+        echo "Текущая директория: $(pwd)"
+        echo "Содержимое /usr/local/bin:"
+        ls -l /usr/local/bin
+    fi
+done < "$MD5SUMS_FILE"
+
+echo "Проверка MD5 прошла успешно."

@@ -119,23 +119,28 @@ def is_ip_in_resolv(ip):
     return False
 
 
-def create_minion_conf(host, domain):
+def create_minion_preinst(host, domain):
     data = f'master: {host}.{domain}'
     with open('/etc/salt/minion.d/preinst.conf', 'w') as file:
+        file.write(data)
+
+
+def create_minion_id(host, domain):
+    data = f'{host}.{domain}'
+    with open('/etc/salt/minion_id', 'w') as file:
         file.write(data)
 
 
 def delete_minion_conf():
     os.remove('/etc/salt/minion.d/preinst.conf')
 
-
-def api_login(ip, login, password):
+def api_login(fqdn, login, password):
     try:
-        url = f"https://{ip}/ad/api/ds/login"
+        url = f"https://{fqdn}/ad/api/ds/login"
         payload = {"data": {"login": login, "password": password}}
         headers = {'accept': 'application/json',
                 'Content-Type': 'application/json'}
-        response = requests.post(url, json=payload, headers=headers, verify=False)
+        response = requests.post(url, json=payload, headers=headers, verify=True)
 
         if response.json()["success"]:
             return response.cookies
@@ -144,12 +149,12 @@ def api_login(ip, login, password):
     except Exception as e:
         raise e
 
-def api_send_request(ip, path, data, cookies):
-    url = f"https://{ip}/ad/api{path}"
+def api_send_request(fqdn, path, data, cookies):
+    url = f"https://{fqdn}/ad/api{path}"
     headers = {'accept': 'application/json',
                'Content-Type': 'application/json'}
     response = requests.post(
-        url, json=data, headers=headers, cookies=cookies, verify=False)
+        url, json=data, headers=headers, cookies=cookies, verify=True)
 
     if response.json()["success"]:
         print("Запрос успешно отправлен")
@@ -157,10 +162,10 @@ def api_send_request(ip, path, data, cookies):
         return False
 
 
-def api_get_job_id(ip, cookies):
+def api_get_job_id(fqdn, cookies):
     query = "?filters={\"property\":\"automationtaskjoblistitem_job_status\",\"value\":\"STARTED\",\"operator\":\"eq\",\"join\":\"OR\"}&limit=1&sortby=-automationtaskjoblistitem_job_created_date"
-    url = f"https://{ip}/ad/api/ds/automation-tasks/jobs{query}"
-    response = requests.get(url, cookies=cookies, verify=False)
+    url = f"https://{fqdn}/ad/api/ds/automation-tasks/jobs{query}"
+    response = requests.get(url, cookies=cookies, verify=True)
     data = response.json()["data"]
     if data:
         return data[0]["automationtaskjoblistitem_job_id"]
@@ -200,11 +205,11 @@ form2 = [
      4, 30, 20, 0, 1, item_help2_adminpassword),
 ]
 
-item_help3_ip = "Введите Ip адрес первого контроллера домена"
+item_help3_fqdn = "Введите FQDN имя первого контроллера домена"
 item_help3_adminpassword = "Введите пароль"
 
 form3 = [
-    ("Ip контроллера домена:", 1, 1, "", 1, 30, 20, 0, 0, item_help3_ip),
+    ("FQDN контроллера домена:", 1, 1, "", 1, 30, 20, 0, 0, item_help3_fqdn),
     ("Пароль администратора домена:", 2, 1, "",
      2, 30, 20, 0, 1, item_help3_adminpassword),
 ]
@@ -356,7 +361,7 @@ try:
                     d.gauge_update(
                         5, 'Конфигурация /etc/hostname', update_text=True)
                     run_command_without_output(
-                        f'sudo hostnamectl set-hostname {hostname}.{domain}')
+                        f'hostnamectl set-hostname {hostname}.{domain}')
                     aldpro_first_dc = f'{hostname}.{domain}'
                 else:
                     hostname = hostname.split('.')[0]
@@ -366,9 +371,9 @@ try:
                 # FIXME hardcoded hostname
                 d.gauge_update(7, 'Конфигурация RabbitMQ', update_text=True)
                 run_command_without_output(
-                    'sudo rabbitmqctl -n rabbit@smolensk-base stop')
+                    'rabbitmqctl -n rabbit@smolensk-base stop')
                 run_command_without_output(
-                    'sudo rm -rf /var/lib/rabbitmq/mnesia/')
+                    'rm -rf /var/lib/rabbitmq/mnesia/')
 
                 if not is_ip_in_hosts(ip_address):
                     d.gauge_update(
@@ -377,7 +382,8 @@ try:
 
                 d.gauge_update(15, 'Конфигурация Salt Minion',
                                update_text=True)
-                create_minion_conf(hostname, domain)
+                create_minion_preinst(hostname, domain)
+                create_minion_id(hostname, domain)
 
                 d.gauge_update(
                     20, f'Перезапуск службы Salt Master на локальной системе.\nОжидаем {wait_interval} сек.', update_text=True)
@@ -557,28 +563,28 @@ try:
                 # TODO stop cloud-init to reconfigure hostname
 
                 # FIXME hardcoded hostname
-                d.gauge_update(20, 'Конфигурация RabbitMQ', update_text=True)
-                run_command_without_output(
-                    'sudo rabbitmqctl -n rabbit@smolensk-base stop')
-                run_command_without_output(
-                    'sudo rm -rf /var/lib/rabbitmq/mnesia/')
+                #d.gauge_update(20, 'Конфигурация RabbitMQ', update_text=True)
+                #run_command_without_output(
+                #    'sudo rabbitmqctl -n rabbit@smolensk-base stop')
+                #run_command_without_output(
+                #    'sudo rm -rf /var/lib/rabbitmq/mnesia/')
 
                 if not is_ip_in_hosts(ip_address):
                     d.gauge_update(
                         30, 'Конфигурация /etc/hosts', update_text=True)
                     set_hosts(hostname, ip_address, domain)
 
-                d.gauge_update(
-                    40, 'Конфигурация /etc/resolv.conf', update_text=True)
-                run_command_without_output('sudo rm -f /etc/resolv.conf')
-                set_resolv(ip, domain)
-                run_command_without_output('sudo chattr +i /etc/resolv.conf')
+                #d.gauge_update(
+                #    40, 'Конфигурация /etc/resolv.conf', update_text=True)
+                #run_command_without_output('sudo rm -f /etc/resolv.conf')
+                #set_resolv(ip, domain)
+                #run_command_without_output('sudo chattr +i /etc/resolv.conf')
 
                 # Проверяем DNS имя домена
                 if not is_valid_domain(domain):
                     d.msgbox(
                         f"Имя домена {domain} не может быть разрешено в DNS. Пожалуйста, введите доступное имя домена.")
-                    run_command_without_output('sudo chattr -i /etc/resolv.conf')
+                    #run_command_without_output('sudo chattr -i /etc/resolv.conf')
                     os.system('clear')
                     break
 
@@ -589,7 +595,7 @@ try:
                     os.system('clear')
                     break
 
-                d.gauge_update(50, 'Ввод хоста в домен', update_text=True)
+                d.gauge_update(60, 'Ввод хоста в домен', update_text=True)
                 run_command_without_output(
                     f"sudo /opt/rbta/aldpro/client/bin/aldpro-client-installer --domain {domain} --account admin --password '{admin_password}' --host {hostname} --gui --force")
 
@@ -618,7 +624,7 @@ try:
             if code == d.CANCEL:
                 continue
 
-            ip_dc, admin_password = fields
+            dc_name, admin_password = fields
 
             d.gauge_start()
 
@@ -627,14 +633,44 @@ try:
                 d.gauge_update(
                     10, 'Аутентификация на первичном контроллере', update_text=True)
 
-                cookies = api_login(ip_dc, 'admin', admin_password)
+                cookies = api_login(dc_name, 'admin', admin_password)
                 if cookies == False:
                     d.msgbox(
                         f"Аутентификация не пройдена.")
                     #os.system('clear')
                     break
 
+                d.gauge_update(
+                    20, 'Запуск задания автоматизации', update_text=True)
 
+                req_path = "/ds/domain-controllers"
+                req_data = {
+                    "data": {
+                        "domaincontroller_ip_address": ip_address,
+                        "domaincontroller_ipa_login": "admin",
+                        "domaincontroller_ipa_password": admin_password,
+                        "domaincontroller_name": current_hostname,
+                        "domaincontroller_roles": [],
+                        "domaincontroller_site_name": "Головной офис"
+                    }
+                }
+
+                request_result = api_send_request(dc_name, req_path, req_data, cookies)
+
+                if request_result == False:
+                    d.msgbox(
+                        f"Задание не запущено.")
+                    #os.system('clear')
+                    break
+
+
+                job_id = api_get_job_id(dc_name, cookies)
+
+                if job_id == False:
+                    d.msgbox(
+                        f"Id задания не найдено.")
+                    #os.system('clear')
+                    break
 
                 exit_code = d.gauge_stop()
                 #os.system('clear')  # Очистка экрана
